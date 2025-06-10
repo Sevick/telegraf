@@ -28,9 +28,9 @@ Parameters:
     Default: 1000
   SQSPollDelay:
     Type: String
-    Description: "How long (sec) SQS waits for messages to become available before invoking consumer"
+    Description: "How long (sec) SQS buffer queue waits for messages to become available before invoking consumer"
     Default: 10
   SQSBatchSize:
     Type: String
-    Description: "Number of messages to be pulled from SQS buffer at once"
+    Description: "Number of messages to be pulled from SQS buffer queue at once"
     Default: 10
