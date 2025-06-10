@@ -1,0 +1,36 @@
+Transform: AWS::Serverless-2016-10-31
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterLabels:
+      SourceSNSTopic:
+        default: "Source SNS opic"
+      SQSLengthWarningLimit:
+        default: "Threshold for the length of the SQS queue used for buffering"
+      SQSPollDelay:
+        default: "SQS poll delay"
+      SQSBatchSize:
+        default: "SQS batch size"
+
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: "Telegraf"
+
+  SourceSNSTopic:
+    Type: String
+    Description: "SNS topic to subscribe to"
+
+  SQSLengthWarningLimit:
+    Type: String
+    Description: "Threshold for the length of the SQS queue used for buffering"
+    Default: 1000
+  SQSPollDelay:
+    Type: String
+    Description: "How long (sec) SQS waits for messages to become available before invoking consumer"
+    Default: 10
+  SQSBatchSize:
+    Type: String
+    Description: "Number of messages to be pulled from SQS buffer at once"
+    Default: 10
