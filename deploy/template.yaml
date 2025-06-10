@@ -4,7 +4,7 @@ Metadata:
   AWS::CloudFormation::Interface:
     ParameterLabels:
       SourceSNSTopic:
-        default: "Source SNS opic"
+        default: "Source SNS topic"
       SQSLengthWarningLimit:
         default: "Threshold for the length of the SQS queue used for buffering"
       SQSPollDelay:
