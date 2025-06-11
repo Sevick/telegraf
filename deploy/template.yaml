@@ -5,6 +5,8 @@ Metadata:
     ParameterLabels:
       SourceSNSTopic:
         default: "Source SNS topic"
+      UseSMS:
+        default: "Use SecretManager"
       SQSLengthWarningLimit:
         default: "Threshold for the length of the SQS queue used for buffering"
       SQSPollDelay:
@@ -21,6 +23,10 @@ Parameters:
   SourceSNSTopic:
     Type: String
     Description: "SNS topic to subscribe to"
+
+  UseSMS:
+    Type: String
+    Description: "Use SM to store Telegram bot token. SMS fees apply!"
 
   SQSLengthWarningLimit:
     Type: String
