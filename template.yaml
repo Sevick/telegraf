@@ -84,7 +84,8 @@ Parameters:
 Conditions:
   SourceSNSTopicSubscribeRoleHasValue:
     !Not [ !Equals [ !Ref SourceSNSTopicSubscribeRole, "" ] ]
-
+  UseSM:
+    !Not [ !Equals [ !Ref UseSMS, true ] ]
 
 Resources:
   TelegrafFunction:
