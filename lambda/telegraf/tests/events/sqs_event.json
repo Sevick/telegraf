@@ -1,0 +1,14 @@
+{
+  "Records": [
+    {
+      "body": "{\"message\": \"test1\"}",
+      "receiptHandle": "test-receipt-handle-1",
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:my-queue"
+    },
+    {
+      "body": "{\"message\": \"test2\"}",
+      "receiptHandle": "test-receipt-handle-2",
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:my-queue"
+    }
+  ]
+}

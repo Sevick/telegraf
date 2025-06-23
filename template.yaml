@@ -1,0 +1,211 @@
+Transform: AWS::Serverless-2016-10-31
+
+Metadata:
+  ParameterGroups:
+    - Label:
+        default: "General settings"
+      Parameters:
+        - ApplicationName
+        - SourceSNSTopic
+        - SourceSNSTopicSubscribeRole
+        - LogsRetentionInDays
+        - UseSMS
+    - Label:
+        default: "SQS buffer configuration"
+      Parameters:
+        - SQSPollDelay
+        - SQSBatchSize
+        - SQSRetryLimit
+
+
+  AWS::CloudFormation::Interface:
+    ParameterLabels:
+      SourceSNSTopic:
+        default: "Source SNS topic ARN to subscribe to"
+      SourceSNSTopicSubscribeRole:
+        default: "Existing role to access SNS topic"
+      UseSMS:
+        default: "Use SecretManager"
+      SQSLengthWarningLimit:
+        default: "Threshold for the length of the SQS queue used for buffering"
+      SQSPollDelay:
+        default: "SQS poll delay"
+      SQSBatchSize:
+        default: "SQS batch size"
+      SQSRetryLimit:
+        default: "SQS retry limit"
+      LogsRetentionInDays:
+        default: "Logs retention in days"
+
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: "Telegraf"
+
+  LogsRetentionInDays:
+    Type: Number
+    Default: 3
+    Description: "Logs retention in days"
+
+  SourceSNSTopic:
+    Type: String
+    default: "arn:aws:sns:us-east-1:286005182102:telegraf-test-topic.fifo"
+    Description: "arn:aws:sns:<Region>:<AccountID>:<SNS topic>.fifo"
+
+  SourceSNSTopicSubscribeRole:
+    Type: String
+    default: ""
+    Description: "Exiting role to access SNS topic (should grant SNS:Subscribe). If empty  - new role will be created"
+
+  UseSMS:
+    Type: Boolean
+    Default: false
+    Description: "Use SM to store Telegram bot token. SMS fees apply!"
+
+  SQSLengthWarningLimit:
+    Type: Number
+    Description: "Threshold for the length of the SQS queue used for buffering"
+    Default: 1000
+  SQSPollDelay:
+    Type: Number
+    Description: "How long (sec) SQS buffer queue waits for messages to become available before invoking consumer"
+    Default: 10
+  SQSBatchSize:
+    Type: Number
+    Description: "Number of messages to be pulled from SQS buffer queue at once"
+    Default: 10
+  SQSRetryLimit:
+    Type: Number
+    Description: "Number of retries before moving message to DLQ or dropped"
+    Default: 3
+
+
+Conditions:
+  SourceSNSTopicSubscribeRoleHasValue:
+    !Not [ !Equals [ !Ref SourceSNSTopicSubscribeRole, "" ] ]
+
+
+Resources:
+  TelegrafFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: TelegrafFunction
+      CodeUri: lambda/src/telegraf
+      Handler: handler.handler
+      Runtime: python3.12
+      MemorySize: 128
+      Timeout: 30
+      Tracing: Active
+      Events:
+        TelefrafQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TelegrafQueue.Arn
+            BatchSize: !Ref SQSBatchSize
+      Layers:
+        - !Ref TelegrafLayer
+      Architectures:
+        - arm64
+      Role:
+        Fn::GetAtt:
+          - TelegrafAppRole
+          - Arn
+
+
+  TelegrafLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${TelegrafFunction}
+      RetentionInDays: !Ref LogsRetentionInDays
+
+
+  TelegrafLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Layer ${ResourceName}
+        - ResourceName: TelegrafLayer
+      ContentUri: src/TelegrafLayer
+      RetentionPolicy: Retain
+
+
+  TelegrafQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      DeduplicationScope: queue
+      RedrivePolicy:
+        maxReceiveCount: !Ref SQSRetryLimit
+      MessageRetentionPeriod: 86400
+
+  TelegrafAppSNSTopicSubscribeRole:
+    Type: AWS::IAM::Role
+    Condition: SourceSNSTopicSubscribeRoleHasValue
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TelegrafAppSNSTopicSubscribe
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - SNS:Subscribe
+                Resource: !Ref SourceSNSTopic
+
+
+  TelegrafAppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TelegrafAppPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt TelegrafLogGroup.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                Resource: !GetAtt TelegrafLogGroup.Arn
+
+  TelegrafApplication:
+    Type: AWS::ServiceCatalogAppRegistry::Application
+    Properties:
+      Name: !Ref ApplicationName
+      Description: Telegraf bot for Telegram
+      Tags:
+        Environment: Production
+
+  AppAssociation:
+    Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+    Properties:
+      Application: !Ref TelegrafApplication
+      Resource: !Ref AWS::StackId
+      ResourceType: CFN_STACK
+
+Outputs:
+  SqsQueueArn:
+    Value: !GetAtt TelegrafQueue.Arn
