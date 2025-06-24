@@ -9,13 +9,20 @@ Metadata:
         - SourceSNSTopic
         - SourceSNSTopicSubscribeRole
         - LogsRetentionInDays
-        - UseSMS
+
     - Label:
         default: "SQS buffer configuration"
       Parameters:
         - SQSPollDelay
         - SQSBatchSize
         - SQSRetryLimit
+
+    - Label:
+        default: "Telegram bot configuration"
+      Parameters:
+        - TelegramBotToken
+        - TelegramChannel
+        - TelegramSendTimeout
 
 
   AWS::CloudFormation::Interface:
@@ -24,8 +31,6 @@ Metadata:
         default: "Source SNS topic ARN to subscribe to"
       SourceSNSTopicSubscribeRole:
         default: "Existing role to access SNS topic"
-      UseSMS:
-        default: "Use SecretManager"
       SQSLengthWarningLimit:
         default: "Threshold for the length of the SQS queue used for buffering"
       SQSPollDelay:
@@ -58,10 +63,11 @@ Parameters:
     default: ""
     Description: "Exiting role to access SNS topic (should grant SNS:Subscribe). If empty  - new role will be created"
 
-  UseSMS:
-    Type: Boolean
-    Default: false
-    Description: "Use SM to store Telegram bot token. SMS fees apply!"
+  UseSSM:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: "false"
+    Description: "Use AWS Systems Manager Parameter Store to store Telegram bot token. SMS fees apply!"
 
   SQSLengthWarningLimit:
     Type: Number
@@ -80,12 +86,21 @@ Parameters:
     Description: "Number of retries before moving message to DLQ or dropped"
     Default: 3
 
+  TelegramBotToken:
+    Type: String
+    NoEcho: true
+    Description: "The token to be used to send notifications"
+  TelegramChannel:
+    Type: String
+    NoEcho: true
+    Description: "Group or channel ID to send notifications"
+  TelegramSendTimeout:
+    Type: Number
+    Default: 30
+    Description: "Seconds to wait for Telegram send message to complete"
 
 Conditions:
-  SourceSNSTopicSubscribeRoleHasValue:
-    !Not [ !Equals [ !Ref SourceSNSTopicSubscribeRole, "" ] ]
-  UseSM:
-    !Not [ !Equals [ !Ref UseSMS, true ] ]
+  SourceSNSTopicSubscribeRoleHasValue: !Not [ !Equals [ !Ref SourceSNSTopicSubscribeRole, "" ] ]
 
 Resources:
   TelegrafFunction:
@@ -95,17 +110,20 @@ Resources:
         - Stack ${AWS::StackName} Function ${ResourceName}
         - ResourceName: TelegrafFunction
       CodeUri: lambda/src/telegraf
-      Handler: handler.handler
+      Handler: telegraf_sqs_consumer.lambda_handler
       Runtime: python3.12
       MemorySize: 128
-      Timeout: 30
-      Tracing: Active
+      Timeout: !Ref TelegramSendTimeout
       Events:
         TelefrafQueue:
           Type: SQS
           Properties:
             Queue: !GetAtt TelegrafQueue.Arn
             BatchSize: !Ref SQSBatchSize
+      Environment:
+        Variables:
+          TELEGRAM_BOT_TOKEN_PARAMETER: !Ref TelegramBotTokenParameter
+          TELEGRAM_CHANNEL_PARAMETER: !Ref TelegramChannelParameter
       Layers:
         - !Ref TelegrafLayer
       Architectures:
@@ -143,6 +161,31 @@ Resources:
       RedrivePolicy:
         maxReceiveCount: !Ref SQSRetryLimit
       MessageRetentionPeriod: 86400
+
+  TelegramBotTokenParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ApplicationName}/telegramBotToken"
+      Type: SecureString
+      Value: !Ref TelegramBotToken
+      Description: !Sub "Telegram bot token for ${ApplicationName} application"
+      KeyId: alias/aws/ssm
+      Tags:
+        Environment: Production
+        Application: !Ref ApplicationName
+
+  TelegramChannelParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ApplicationName}/telegramChannel"
+      Type: SecureString
+      Value: !Ref TelegramChannel
+      Description: !Sub "Telegram channel for ${ApplicationName} application"
+      KeyId: alias/aws/ssm
+      Tags:
+        Environment: Production
+        Application: !Ref ApplicationName
+
 
   TelegrafAppSNSTopicSubscribeRole:
     Type: AWS::IAM::Role
@@ -191,6 +234,23 @@ Resources:
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
                 Resource: !GetAtt TelegrafLogGroup.Arn
+        - PolicyName: SSMParameterAccess-TelegramBotToken
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: [
+                    !GetAtt TelegramBotTokenParameter.Arn,
+                    !GetAtt TelegramChannelParameter.Arn
+                ]
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/alias/aws/ssm
 
   TelegrafApplication:
     Type: AWS::ServiceCatalogAppRegistry::Application
@@ -210,3 +270,9 @@ Resources:
 Outputs:
   SqsQueueArn:
     Value: !GetAtt TelegrafQueue.Arn
+  ParameterArn:
+    Description: "ARN of the created SSM Parameter (bot token)"
+    Value: !GetAtt TelegramBotTokenParameter.Arn
+  LambdaFunctionArn:
+    Description: "ARN of the Telegram Bot Lambda function"
+    Value: !GetAtt TelegrafFunction.Arn

@@ -1,16 +1,16 @@
 import json
 import logging
 import boto3
+import os
 
-# Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize SQS client
 sqs_client = boto3.client('sqs')
-
+ssm_client = boto3.client('ssm')
 
 def lambda_handler(event, context):
+
     """
     AWS Lambda function to consume and process SQS messages.
 
@@ -38,7 +38,7 @@ def lambda_handler(event, context):
                 process_message(message_data)
 
                 # Delete message from queue after successful processing
-                logger.info(f"Deletingd message with receipt handle: {receipt_handle}")
+                logger.info(f"Deleting the message with receipt handle: {receipt_handle}")
                 queue_url = record['eventSourceARN'].split(':')[-1]
                 sqs_client.delete_message(
                     QueueUrl=queue_url,
@@ -69,6 +69,8 @@ def lambda_handler(event, context):
         }
 
 
+
+
 def process_message(message_data):
     """
     Placeholder function to process message data.
@@ -80,3 +82,23 @@ def process_message(message_data):
     # Example: Log the message content
     logger.info(f"Processing message: {message_data}")
     # Add your processing logic here
+
+def retrieveParameterValue(parameter_arn):
+    """
+    Retrieve a parameter value from AWS Systems Manager Parameter Store.
+
+    Args:
+        parameter_arn: The ARN of the parameter to retrieve
+
+    Returns:
+        str: The parameter value
+    """
+    try:
+        response = ssm_client.get_parameter(
+            Name=parameter_arn,
+            WithDecryption=True
+        )
+        return response['Parameter']['Value']
+    except Exception as e:
+        logger.error(f"Failed to retrieve parameter value: {e}")
+        raise
