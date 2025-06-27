@@ -1,5 +1,8 @@
 Transform: AWS::Serverless-2016-10-31
 
+# create admin role to manage all related resources
+
+
 Metadata:
   ParameterGroups:
     - Label:
@@ -55,19 +58,13 @@ Parameters:
 
   SourceSNSTopic:
     Type: String
-    default: "arn:aws:sns:us-east-1:286005182102:telegraf-test-topic.fifo"
+    Default: "arn:aws:sns:us-east-1:286005182102:telegraf-test-topic.fifo"
     Description: "arn:aws:sns:<Region>:<AccountID>:<SNS topic>.fifo"
 
   SourceSNSTopicSubscribeRole:
     Type: String
-    default: ""
+    Default: ""
     Description: "Exiting role to access SNS topic (should grant SNS:Subscribe). If empty  - new role will be created"
-
-  UseSSM:
-    Type: String
-    AllowedValues: ['true', 'false']
-    Default: "false"
-    Description: "Use AWS Systems Manager Parameter Store to store Telegram bot token. SMS fees apply!"
 
   SQSLengthWarningLimit:
     Type: Number
@@ -109,13 +106,13 @@ Resources:
       Description: !Sub
         - Stack ${AWS::StackName} Function ${ResourceName}
         - ResourceName: TelegrafFunction
-      CodeUri: lambda/src/telegraf
+      CodeUri: s3://telegraf-src-8857ffkjd48fkn/lambda/
       Handler: telegraf_sqs_consumer.lambda_handler
       Runtime: python3.12
       MemorySize: 128
       Timeout: !Ref TelegramSendTimeout
       Events:
-        TelefrafQueue:
+        TelefrafQueueEvent:
           Type: SQS
           Properties:
             Queue: !GetAtt TelegrafQueue.Arn
@@ -124,8 +121,6 @@ Resources:
         Variables:
           TELEGRAM_BOT_TOKEN_PARAMETER: !Ref TelegramBotTokenParameter
           TELEGRAM_CHANNEL_PARAMETER: !Ref TelegramChannelParameter
-      Layers:
-        - !Ref TelegrafLayer
       Architectures:
         - arm64
       Role:
@@ -138,18 +133,8 @@ Resources:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
     Properties:
-      LogGroupName: !Sub /aws/lambda/${TelegrafFunction}
+      LogGroupName: !Ref ApplicationName
       RetentionInDays: !Ref LogsRetentionInDays
-
-
-  TelegrafLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      Description: !Sub
-        - Stack ${AWS::StackName} Layer ${ResourceName}
-        - ResourceName: TelegrafLayer
-      ContentUri: src/TelegrafLayer
-      RetentionPolicy: Retain
 
 
   TelegrafQueue:
@@ -158,8 +143,6 @@ Resources:
       FifoQueue: true
       ContentBasedDeduplication: true
       DeduplicationScope: queue
-      RedrivePolicy:
-        maxReceiveCount: !Ref SQSRetryLimit
       MessageRetentionPeriod: 86400
 
   TelegramBotTokenParameter:
@@ -167,9 +150,9 @@ Resources:
     Properties:
       Name: !Sub "/${ApplicationName}/telegramBotToken"
       Type: SecureString
+      DataType: String
       Value: !Ref TelegramBotToken
       Description: !Sub "Telegram bot token for ${ApplicationName} application"
-      KeyId: alias/aws/ssm
       Tags:
         Environment: Production
         Application: !Ref ApplicationName
@@ -179,9 +162,9 @@ Resources:
     Properties:
       Name: !Sub "/${ApplicationName}/telegramChannel"
       Type: SecureString
+      DataType: String
       Value: !Ref TelegramChannel
       Description: !Sub "Telegram channel for ${ApplicationName} application"
-      KeyId: alias/aws/ssm
       Tags:
         Environment: Production
         Application: !Ref ApplicationName
@@ -233,7 +216,7 @@ Resources:
                 Action:
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
-                Resource: !GetAtt TelegrafLogGroup.Arn
+                Resource: !GetAtt TelegrafQueue.Arn
         - PolicyName: SSMParameterAccess-TelegramBotToken
           PolicyDocument:
             Version: '2012-10-17'
