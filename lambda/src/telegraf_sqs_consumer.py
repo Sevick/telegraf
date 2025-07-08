@@ -4,7 +4,6 @@ import boto3
 import os
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
 sqs_client = boto3.client('sqs')
 ssm_client = boto3.client('ssm')

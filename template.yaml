@@ -96,44 +96,81 @@ Parameters:
     Default: 30
     Description: "Seconds to wait for Telegram send message to complete"
 
+  LogFormat:
+    Type: String
+    Description: "Text/Json"
+    Default: "Text"
+  S3BucketName:
+    Type: String
+    Description: "S3Bucket containing lamdas source code"
+    Default: "telegraf-src-8857ffkjd48fkn"
+
 Conditions:
   SourceSNSTopicSubscribeRoleHasValue: !Not [ !Equals [ !Ref SourceSNSTopicSubscribeRole, "" ] ]
 
 Resources:
   TelegrafFunction:
-    Type: AWS::Serverless::Function
+    Type: AWS::Lambda::Function
     Properties:
       Description: !Sub
         - Stack ${AWS::StackName} Function ${ResourceName}
         - ResourceName: TelegrafFunction
-      CodeUri: s3://telegraf-src-8857ffkjd48fkn/lambda/
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: c77b98e2e5c0f436c01c43ae4f632a78
       Handler: telegraf_sqs_consumer.lambda_handler
       Runtime: python3.12
       MemorySize: 128
       Timeout: !Ref TelegramSendTimeout
-      Events:
-        TelefrafQueueEvent:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt TelegrafQueue.Arn
-            BatchSize: !Ref SQSBatchSize
-      Environment:
-        Variables:
-          TELEGRAM_BOT_TOKEN_PARAMETER: !Ref TelegramBotTokenParameter
-          TELEGRAM_CHANNEL_PARAMETER: !Ref TelegramChannelParameter
       Architectures:
         - arm64
+      LoggingConfig:
+        LogGroup: !Ref TelegrafLogGroup
+        LogFormat: !Ref LogFormat
       Role:
         Fn::GetAtt:
           - TelegrafAppRole
           - Arn
 
 
+  TelegrafSQSMapping:
+    DependsOn:
+      - TelegrafFunction
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: !Ref SQSBatchSize
+      EventSourceArn: !GetAtt TelegrafQueue.Arn
+      FunctionName: !Ref TelegrafFunction
+      Enabled: false
+
+  CreateParameterFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: CreateParameterFunction
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: 4ff1a9f05f1ea14abfc1739456910c4c
+      Handler: create_secure_parameter.create_secure_parameter
+      Runtime: python3.12
+      MemorySize: 128
+      Timeout: 60
+      Architectures:
+        - arm64
+      LoggingConfig:
+        LogGroup: !Ref TelegrafLogGroup
+        LogFormat: !Ref LogFormat
+      Role:
+        Fn::GetAtt:
+          - TelegrafCreateParameterRole
+          - Arn
+
   TelegrafLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Retain
+    #DeletionPolicy: Retain
     Properties:
-      LogGroupName: !Ref ApplicationName
+      LogGroupName: !Sub "${ApplicationName}/${AWS::StackName}"
       RetentionInDays: !Ref LogsRetentionInDays
 
 
@@ -145,30 +182,30 @@ Resources:
       DeduplicationScope: queue
       MessageRetentionPeriod: 86400
 
-  TelegramBotTokenParameter:
-    Type: AWS::SSM::Parameter
+  TelegrafCreateParameterRole:
+    Type: AWS::IAM::Role
     Properties:
-      Name: !Sub "/${ApplicationName}/telegramBotToken"
-      Type: SecureString
-      DataType: String
-      Value: !Ref TelegramBotToken
-      Description: !Sub "Telegram bot token for ${ApplicationName} application"
-      Tags:
-        Environment: Production
-        Application: !Ref ApplicationName
-
-  TelegramChannelParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub "/${ApplicationName}/telegramChannel"
-      Type: SecureString
-      DataType: String
-      Value: !Ref TelegramChannel
-      Description: !Sub "Telegram channel for ${ApplicationName} application"
-      Tags:
-        Environment: Production
-        Application: !Ref ApplicationName
-
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CreateParameterPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt TelegrafLogGroup.Arn
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*"
 
   TelegrafAppSNSTopicSubscribeRole:
     Type: AWS::IAM::Role
@@ -182,7 +219,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: TelegrafAppSNSTopicSubscribe
+        - PolicyName: SNSTopicSubscribe
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -216,6 +253,7 @@ Resources:
                 Action:
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
                 Resource: !GetAtt TelegrafQueue.Arn
         - PolicyName: SSMParameterAccess-TelegramBotToken
           PolicyDocument:
@@ -227,13 +265,10 @@ Resources:
                   - ssm:GetParameters
                   - ssm:GetParametersByPath
                 Resource: [
-                    !GetAtt TelegramBotTokenParameter.Arn,
-                    !GetAtt TelegramChannelParameter.Arn
+                    !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/telegramToken",
+                    !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/telegramChannel"
                 ]
-              - Effect: Allow
-                Action:
-                  - kms:Decrypt
-                Resource: arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/alias/aws/ssm
+
 
   TelegrafApplication:
     Type: AWS::ServiceCatalogAppRegistry::Application
@@ -250,12 +285,55 @@ Resources:
       Resource: !Ref AWS::StackId
       ResourceType: CFN_STACK
 
+
+  StackCompletionEventRule:
+    Type: AWS::Events::Rule
+    DependsOn:
+      - CreateParameterFunction
+      - TelegrafLogGroup
+    Properties:
+      EventPattern:
+        source:
+          - aws.cloudformation
+        detail-type:
+          - CloudFormation Stack Status Change
+        detail:
+          stack-id:
+            - !Ref AWS::StackId
+          status-details:
+            status:
+              - CREATE_COMPLETE
+              - UPDATE_COMPLETE
+      Targets:
+        - Arn: !GetAtt CreateParameterFunction.Arn
+          Id: CreateParameterFunctionTarget_Channel
+          Input: !Sub |
+            {
+              "parameterName": "/${AWS::StackName}/telegramToken",
+              "parameterValue": "${TelegramBotToken}",
+              "parameterDescr": "parameter for ${ApplicationName} application"
+            }
+        - Arn: !GetAtt CreateParameterFunction.Arn
+          Id: CreateParameterFunctionTarget_Token
+          Input: !Sub |
+            {
+              "parameterName": "/${AWS::StackName}/telegramChannel",
+              "parameterValue": "${TelegramBotToken}",
+              "parameterDescr": "parameter for ${ApplicationName} application"
+            }             
+
+  EventBridgeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CreateParameterFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StackCompletionEventRule.Arn
+
+
 Outputs:
   SqsQueueArn:
     Value: !GetAtt TelegrafQueue.Arn
-  ParameterArn:
-    Description: "ARN of the created SSM Parameter (bot token)"
-    Value: !GetAtt TelegramBotTokenParameter.Arn
   LambdaFunctionArn:
     Description: "ARN of the Telegram Bot Lambda function"
     Value: !GetAtt TelegrafFunction.Arn
