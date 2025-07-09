@@ -58,7 +58,7 @@ Parameters:
 
   SourceSNSTopic:
     Type: String
-    Default: "arn:aws:sns:us-east-1:286005182102:telegraf-test-topic.fifo"
+    Default: "arn:aws:sns:us-east-1:286005182102:telegraf-test-topic-5773484857"
     Description: "arn:aws:sns:<Region>:<AccountID>:<SNS topic>.fifo"
 
   SourceSNSTopicSubscribeRole:
@@ -124,6 +124,9 @@ Resources:
       Timeout: !Ref TelegramSendTimeout
       Architectures:
         - arm64
+      Environment:
+        Variables:
+          LOGLEVEL: INFO
       LoggingConfig:
         LogGroup: !Ref TelegrafLogGroup
         LogFormat: !Ref LogFormat
@@ -151,13 +154,42 @@ Resources:
         - ResourceName: CreateParameterFunction
       Code:
         S3Bucket: !Ref S3BucketName
-        S3Key: 4ff1a9f05f1ea14abfc1739456910c4c
-      Handler: create_secure_parameter.create_secure_parameter
+        S3Key: a91173da9b2d9d2c4a6d2e87175b75ad
+      Handler: parameter_api.create_secure_parameter
       Runtime: python3.12
       MemorySize: 128
       Timeout: 60
       Architectures:
         - arm64
+      Environment:
+        Variables:
+          LOGLEVEL: INFO
+      LoggingConfig:
+        LogGroup: !Ref TelegrafLogGroup
+        LogFormat: !Ref LogFormat
+      Role:
+        Fn::GetAtt:
+          - TelegrafCreateParameterRole
+          - Arn
+
+  DeleteParameterFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: DeleteParameterFunction
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: a91173da9b2d9d2c4a6d2e87175b75ad
+      Handler: parameter_api.delete_secure_parameter
+      Runtime: python3.12
+      MemorySize: 128
+      Timeout: 60
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          LOGLEVEL: INFO
       LoggingConfig:
         LogGroup: !Ref TelegrafLogGroup
         LogFormat: !Ref LogFormat
@@ -205,6 +237,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - ssm:PutParameter
+                  - ssm:DeleteParameter
                 Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*"
 
   TelegrafAppSNSTopicSubscribeRole:
@@ -273,7 +306,7 @@ Resources:
   TelegrafApplication:
     Type: AWS::ServiceCatalogAppRegistry::Application
     Properties:
-      Name: !Ref ApplicationName
+      Name: !Sub "${ApplicationName}-${AWS::StackName}"
       Description: Telegraf bot for Telegram
       Tags:
         Environment: Production
@@ -318,7 +351,7 @@ Resources:
           Input: !Sub |
             {
               "parameterName": "/${AWS::StackName}/telegramChannel",
-              "parameterValue": "${TelegramBotToken}",
+              "parameterValue": "${TelegramChannel}",
               "parameterDescr": "parameter for ${ApplicationName} application"
             }             
 
@@ -330,6 +363,35 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt StackCompletionEventRule.Arn
 
+  StackDeleteHookTelegramChannel:
+    Type: Custom::Cleanup
+    Properties:
+      ServiceToken: !GetAtt DeleteParameterFunction.Arn
+      parameterName: !Sub "/${AWS::StackName}/telegramChannel"
+      Policies:
+        - PolicyName: StackDeleteHookTelegramChannelPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                    - lambda:InvokeFunction
+                Resource: !GetAtt DeleteParameterFunction.Arn
+
+  StackDeleteHookTelegramToken:
+    Type: Custom::Cleanup
+    Properties:
+      ServiceToken: !GetAtt DeleteParameterFunction.Arn
+      parameterName: !Sub "/${AWS::StackName}/telegramToken"
+      Policies:
+        - PolicyName: StackDeleteHookTelegramTokenPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                    - lambda:InvokeFunction
+                Resource: !GetAtt DeleteParameterFunction.Arn
 
 Outputs:
   SqsQueueArn:
