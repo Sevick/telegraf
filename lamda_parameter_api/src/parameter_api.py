@@ -42,7 +42,6 @@ def create_secure_parameter(event, context):
     )
 
     logger.info(f"Created parameter: {paramName}")
-    send_response(event, context, "SUCCESS", {})
     return {
         'statusCode': 200,
         'body': json.dumps(f"Created parameter: {paramName}")

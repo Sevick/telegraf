@@ -87,10 +87,12 @@ Parameters:
     Type: String
     NoEcho: true
     Description: "The token to be used to send notifications"
+    Default: "XXYYXXYY"
   TelegramChannel:
     Type: String
     NoEcho: true
     Description: "Group or channel ID to send notifications"
+    Default: "-100XXXXX"
   TelegramSendTimeout:
     Type: Number
     Default: 30
@@ -154,7 +156,7 @@ Resources:
         - ResourceName: CreateParameterFunction
       Code:
         S3Bucket: !Ref S3BucketName
-        S3Key: a91173da9b2d9d2c4a6d2e87175b75ad
+        S3Key: 3fd8907ac9c6c6a36975d64aff49a463
       Handler: parameter_api.create_secure_parameter
       Runtime: python3.12
       MemorySize: 128
@@ -180,7 +182,7 @@ Resources:
         - ResourceName: DeleteParameterFunction
       Code:
         S3Bucket: !Ref S3BucketName
-        S3Key: a91173da9b2d9d2c4a6d2e87175b75ad
+        S3Key: 3fd8907ac9c6c6a36975d64aff49a463
       Handler: parameter_api.delete_secure_parameter
       Runtime: python3.12
       MemorySize: 128
@@ -344,7 +346,7 @@ Resources:
             {
               "parameterName": "/${AWS::StackName}/telegramToken",
               "parameterValue": "${TelegramBotToken}",
-              "parameterDescr": "parameter for ${ApplicationName} application"
+              "parameterDescr": "TelegramBotToken for ${ApplicationName}/${AWS::StackName}"
             }
         - Arn: !GetAtt CreateParameterFunction.Arn
           Id: CreateParameterFunctionTarget_Token
@@ -352,7 +354,7 @@ Resources:
             {
               "parameterName": "/${AWS::StackName}/telegramChannel",
               "parameterValue": "${TelegramChannel}",
-              "parameterDescr": "parameter for ${ApplicationName} application"
+              "parameterDescr": "TelegramChannel for ${ApplicationName}/${AWS::StackName}"
             }             
 
   EventBridgeLambdaPermission:
