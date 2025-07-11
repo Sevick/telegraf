@@ -14,10 +14,10 @@ LOGLEVEL = os.environ.get('LOGLEVEL', 'INFO')
 logger.setLevel(LOGLEVEL)
 
 
-# Telegram API base URL
-TELEGRAM_API_URL = f"https://api.telegram.org/bot"
-
 class Sender:
+    # Telegram API base URL
+    TELEGRAM_API_URL = f"https://api.telegram.org/bot"
+
     def __init__(self):
         self.TELEGRAMBOTTOKEN_PARAMETER_ARN = os.environ.get('TELEGRAMBOTTOKEN_PARAMETER_ARN')
         if not self.TELEGRAMBOTTOKEN_PARAMETER_ARN:
@@ -39,7 +39,7 @@ class Sender:
         datajson = json.dumps(payload).encode('utf-8')
         logger.debug(f"Sending payload: {datajson}")
         req = urllib.request.Request(
-            f"{TELEGRAM_API_URL}{self.bot}/sendMessage",
+            f"{self.TELEGRAM_API_URL}{self.bot}/sendMessage",
             data=datajson,
             headers={'Content-Type': 'application/json'},
             method='POST'

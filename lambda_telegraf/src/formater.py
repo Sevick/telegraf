@@ -24,5 +24,5 @@ def escape_markdown_v2(text):
 def format_telegram_message(subject, message):
     subject = escape_markdown_v2(subject)
     message = escape_markdown_v2(message)
-    messageText = f"""*{subject}*\n\n{message}"""
+    messageText = f"""*{subject}*\n{message}"""
     return messageText

@@ -2,6 +2,7 @@ import json
 import logging
 import boto3
 import urllib3
+import os
 
 logger = logging.getLogger()
 LOGLEVEL = os.environ.get('LOGLEVEL', 'INFO')
@@ -26,9 +27,10 @@ def send_response(event, context, status, reason=None):
 
     try:
         response = http.request("PUT", event["ResponseURL"], body=encoded_body, headers=headers)
-        print(f"Sent response to CloudFormation: {response.status}")
+        logger.debug(f"Sent response to CloudFormation: {response.status}")
     except Exception as e:
         print(f"Failed to send response: {e}")
+        raise
 
 
 def create_secure_parameter(event, context):
@@ -37,14 +39,12 @@ def create_secure_parameter(event, context):
     parameterValue = event.get("parameterValue")
     parameterDescr = event.get("parameterDescr")
 
-    
     ssm_client.put_parameter(
         Name=paramName,
         Value=parameterValue,
         Description=parameterDescr,
         Type='SecureString'
     )
-
     logger.info(f"Created parameter: {paramName}")
     return {
         'statusCode': 200,
@@ -61,6 +61,7 @@ def delete_secure_parameter(event, context):
         }
     logger.info(f"delete_secure_parameter invoked")
     paramName = event.get("ResourceProperties").get("parameterName")
+
     boto3.client('ssm').delete_parameter(
         Name=paramName
     )
