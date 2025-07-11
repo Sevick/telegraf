@@ -219,33 +219,6 @@ Resources:
       LogGroupName: !Sub "${ApplicationName}/${AWS::StackName}"
       RetentionInDays: !Ref LogsRetentionInDays
 
-
-  TelegrafCreateParameterRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CreateParameterPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !GetAtt TelegrafLogGroup.Arn
-              - Effect: Allow
-                Action:
-                  - ssm:PutParameter
-                  - ssm:DeleteParameter
-                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/*"
-
   TelegrafAppSNSTopicSubscribeRole:
     Type: AWS::IAM::Role
     Condition: SourceSNSTopicSubscribeRoleHasNoValue
@@ -266,37 +239,6 @@ Resources:
                 Action:
                   - SNS:Subscribe
                 Resource: !Ref SourceSNSTopic
-
-
-  TelegrafAppRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: TelegrafAppPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !GetAtt TelegrafLogGroup.Arn
-              - Effect: Allow
-                Action:
-                  - ssm:GetParameter
-                  - ssm:GetParameters
-                  - ssm:GetParametersByPath
-                Resource: [
-                  !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken",
-                  !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
-                ]
 
 
   TelegrafApplication:
