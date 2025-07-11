@@ -1,8 +1,6 @@
+AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-
 # create admin role to manage all related resources
-
-
 Metadata:
   ParameterGroups:
     - Label:
@@ -96,14 +94,12 @@ Conditions:
 
 Resources:
   TelegrafFunction:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       Description: !Sub
         - Stack ${AWS::StackName} Function ${ResourceName}
         - ResourceName: TelegrafFunction
-      Code:
-        S3Bucket: !Ref S3BucketName
-        S3Key: 96a2072b2762b8c6a16fc08dafc80ad5
+      CodeUri: lambda_telegraf/src/
       Handler: lambda_handler.lambda_handler
       Runtime: python3.12
       MemorySize: 128
@@ -118,10 +114,22 @@ Resources:
       LoggingConfig:
         LogGroup: !Ref TelegrafLogGroup
         LogFormat: !Ref LogFormat
-      Role:
-        Fn::GetAtt:
-          - TelegrafAppRole
-          - Arn
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !GetAtt TelegrafLogGroup.Arn
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - ssm:GetParametersByPath
+              Resource: [
+                !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken",
+                !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
+              ]
 
 
   TelegrafSNSSubscription:
@@ -141,14 +149,12 @@ Resources:
 
 
   CreateParameterFunction:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       Description: !Sub
         - Stack ${AWS::StackName} Function ${ResourceName}
         - ResourceName: CreateParameterFunction
-      Code:
-        S3Bucket: !Ref S3BucketName
-        S3Key: 3fd8907ac9c6c6a36975d64aff49a463
+      CodeUri: lambda_parameter_api/src/
       Handler: parameter_api.create_secure_parameter
       Runtime: python3.12
       MemorySize: 128
@@ -163,20 +169,25 @@ Resources:
       LoggingConfig:
         LogGroup: !Ref TelegrafLogGroup
         LogFormat: !Ref LogFormat
-      Role:
-        Fn::GetAtt:
-          - TelegrafCreateParameterRole
-          - Arn
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !GetAtt TelegrafLogGroup.Arn
+          - Effect: Allow
+            Action:
+              - ssm:PutParameter
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/*"
 
   DeleteParameterFunction:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       Description: !Sub
         - Stack ${AWS::StackName} Function ${ResourceName}
         - ResourceName: DeleteParameterFunction
-      Code:
-        S3Bucket: !Ref S3BucketName
-        S3Key: 3fd8907ac9c6c6a36975d64aff49a463
+      CodeUri: lambda_parameter_api/src/
       Handler: parameter_api.delete_secure_parameter
       Runtime: python3.12
       MemorySize: 128
@@ -189,10 +200,17 @@ Resources:
       LoggingConfig:
         LogGroup: !Ref TelegrafLogGroup
         LogFormat: !Ref LogFormat
-      Role:
-        Fn::GetAtt:
-          - TelegrafCreateParameterRole
-          - Arn
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !GetAtt TelegrafLogGroup.Arn
+          - Effect: Allow
+            Action:
+              - ssm:DeleteParameter
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/*"
 
   TelegrafLogGroup:
     Type: AWS::Logs::LogGroup
@@ -276,8 +294,8 @@ Resources:
                   - ssm:GetParameters
                   - ssm:GetParametersByPath
                 Resource: [
-                    !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken",
-                    !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
+                  !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken",
+                  !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
                 ]
 
 
@@ -353,7 +371,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                    - lambda:InvokeFunction
+                  - lambda:InvokeFunction
                 Resource: !GetAtt DeleteParameterFunction.Arn
 
   StackDeleteHookTelegramToken:
@@ -368,7 +386,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                    - lambda:InvokeFunction
+                  - lambda:InvokeFunction
                 Resource: !GetAtt DeleteParameterFunction.Arn
 
 Outputs:
