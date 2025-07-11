@@ -3,6 +3,11 @@ import logging
 import urllib.request
 import urllib.parse
 import os
+import boto3
+
+from parameter_store import ParameterStore
+
+ssm_client = boto3.client('ssm')
 
 logger = logging.getLogger()
 LOGLEVEL = os.environ.get('LOGLEVEL', 'INFO')
@@ -24,32 +29,41 @@ if not TELEGRAMCHANNEL_PARAMETER_ARN:
     raise ValueError("TELEGRAMCHANNEL_PARAMETER_ARN environment variable is not set")
 
 
-def send_payload(bot, chat_id, payload):
-    datajson = json.dumps(payload).encode('utf-8')
-    logger.debug(f"Sending payload to chat {chat_id}: {datajson}")
-    req = urllib.request.Request(
-        f"{TELEGRAM_API_URL}{bot}/sendMessage",
-        data=datajson,
-        headers={'Content-Type': 'application/json'},
-        method='POST'
-    )
-    try:
-        with urllib.request.urlopen(req) as response:
-            logger.info(f"Telegram API response: {response.read().decode('utf-8')}")
-            if response.status != 200:
-                logger.error(f"Telegram API error: {response.status} {response.body}")
-                raise Exception(f"Telegram API error: {response.status} {response.body}")
-    except urllib.error.URLError as e:
-        raise Exception(f"Failed to send payload: {str(e)}")
+class Sender:
+    def __init__(self):
+        self.paramter_store = ParameterStore()
+        self.chat_id = self.paramter_store.retrieveParameterValue(TELEGRAMCHANNEL_PARAMETER_ARN)
+        self.bot = self.paramter_store.retrieveParameterValue(TELEGRAMBOTTOKEN_PARAMETER_ARN)
+
+    def send_payload(self, payload):
+        datajson = json.dumps(payload).encode('utf-8')
+        logger.debug(f"Sending payload: {datajson}")
+        req = urllib.request.Request(
+            f"{TELEGRAM_API_URL}{self.bot}/sendMessage",
+            data=datajson,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        try:
+            with urllib.request.urlopen(req) as response:
+                logger.debug(f"Telegram API response: {response.read().decode('utf-8')}")
+                # if response.status == 429:
+                #     buffer_message(bot, payload)
+                if response.status != 200:
+                    logger.error(f"Telegram API error: {response.status} {response.body}")
+                    raise Exception(f"Telegram API error: {response.status} {response.body}")
+        except Exception as e:
+            logger.error(f"Failed to send payload: {response.status} - {str(e)}")
+            raise
 
 
-def send_message(bot, chat_id, text):
-    """Send a message to the specified chat ID."""
-    logger.debug(f"Sending message to chat {chat_id}: {text}")    
-    payload = {
-        'chat_id': chat_id,
-        'text': text,
-        'parse_mode': "MarkdownV2",
-        'disable_web_page_preview': True
-    }
-    send_payload(bot, chat_id, payload)
+    def send_message(self, text):
+        """Send a message to the specified chat ID."""
+        logger.debug(f"Sending message to chat {self.chat_id}: {text}")
+        payload = {
+            'chat_id': self.chat_id,
+            'text': text,
+            'parse_mode': "MarkdownV2",
+            'disable_web_page_preview': True
+        }
+        self.send_payload(payload)

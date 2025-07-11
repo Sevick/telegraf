@@ -14,11 +14,9 @@ Metadata:
         - LogsRetentionInDays
 
     - Label:
-        default: "SQS buffer configuration"
+        default: "SNS configuration"
       Parameters:
-        - SQSPollDelay
-        - SQSBatchSize
-        - SQSRetryLimit
+        - SNSBatchSize
 
     - Label:
         default: "Telegram bot configuration"
@@ -34,14 +32,8 @@ Metadata:
         default: "Source SNS topic ARN to subscribe to"
       SourceSNSTopicSubscribeRole:
         default: "Existing role to access SNS topic"
-      SQSLengthWarningLimit:
-        default: "Threshold for the length of the SQS queue used for buffering"
-      SQSPollDelay:
-        default: "SQS poll delay"
-      SQSBatchSize:
-        default: "SQS batch size"
-      SQSRetryLimit:
-        default: "SQS retry limit"
+      SNSBatchSize:
+        default: "SNS batch size. Batching is supported by SNS-FIFO only."
       LogsRetentionInDays:
         default: "Logs retention in days"
 
@@ -66,22 +58,11 @@ Parameters:
     Default: ""
     Description: "Exiting role to access SNS topic (should grant SNS:Subscribe). If empty  - new role will be created"
 
-  SQSLengthWarningLimit:
+  SNSBatchSize:
     Type: Number
-    Description: "Threshold for the length of the SQS queue used for buffering"
-    Default: 1000
-  SQSPollDelay:
-    Type: Number
-    Description: "How long (sec) SQS buffer queue waits for messages to become available before invoking consumer"
+    Description: "Number of messages to be pulled from SNS"
     Default: 10
-  SQSBatchSize:
-    Type: Number
-    Description: "Number of messages to be pulled from SQS buffer queue at once"
-    Default: 10
-  SQSRetryLimit:
-    Type: Number
-    Description: "Number of retries before moving message to DLQ or dropped"
-    Default: 3
+
 
   TelegramBotToken:
     Type: String
@@ -98,6 +79,9 @@ Parameters:
     Default: 30
     Description: "Seconds to wait for Telegram send message to complete"
 
+  LogLevel:
+    Type: String
+    Default: "DEBUG"
   LogFormat:
     Type: String
     Description: "Text/Json"
@@ -119,8 +103,8 @@ Resources:
         - ResourceName: TelegrafFunction
       Code:
         S3Bucket: !Ref S3BucketName
-        S3Key: c77b98e2e5c0f436c01c43ae4f632a78
-      Handler: telegraf_sqs_consumer.lambda_handler
+        S3Key: b86676f1282ef03f237ed770b897ab7b
+      Handler: lambda_handler.lambda_handler
       Runtime: python3.12
       MemorySize: 128
       Timeout: !Ref TelegramSendTimeout
@@ -128,7 +112,9 @@ Resources:
         - arm64
       Environment:
         Variables:
-          LOGLEVEL: INFO
+          LOGLEVEL: !Ref LogLevel
+          TELEGRAM_BOT_TOKEN_PARAM_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken"
+          TELEGRAM_CHANNEL_PARAM_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
       LoggingConfig:
         LogGroup: !Ref TelegrafLogGroup
         LogFormat: !Ref LogFormat
@@ -138,15 +124,21 @@ Resources:
           - Arn
 
 
-  TelegrafSQSMapping:
-    DependsOn:
-      - TelegrafFunction
-    Type: AWS::Lambda::EventSourceMapping
+  TelegrafSNSSubscription:
+    Type: AWS::SNS::Subscription
     Properties:
-      BatchSize: !Ref SQSBatchSize
-      EventSourceArn: !GetAtt TelegrafQueue.Arn
+      Protocol: lambda
+      TopicArn: !Ref SourceSNSTopic
+      Endpoint: !GetAtt TelegrafFunction.Arn
+
+  LambdaInvokePermissionForSNS:
+    Type: AWS::Lambda::Permission
+    Properties:
       FunctionName: !Ref TelegrafFunction
-      Enabled: false
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref SourceSNSTopic
+
 
   CreateParameterFunction:
     Type: AWS::Lambda::Function
@@ -208,14 +200,6 @@ Resources:
       RetentionInDays: !Ref LogsRetentionInDays
 
 
-  TelegrafQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      FifoQueue: true
-      ContentBasedDeduplication: true
-      DeduplicationScope: queue
-      MessageRetentionPeriod: 86400
-
   TelegrafCreateParameterRole:
     Type: AWS::IAM::Role
     Properties:
@@ -240,7 +224,7 @@ Resources:
                 Action:
                   - ssm:PutParameter
                   - ssm:DeleteParameter
-                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*"
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/*"
 
   TelegrafAppSNSTopicSubscribeRole:
     Type: AWS::IAM::Role
@@ -254,7 +238,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: SNSTopicSubscribe
+        - PolicyName: SNSTopicSubscribePolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -286,22 +270,12 @@ Resources:
                 Resource: !GetAtt TelegrafLogGroup.Arn
               - Effect: Allow
                 Action:
-                  - sqs:ReceiveMessage
-                  - sqs:DeleteMessage
-                  - sqs:GetQueueAttributes
-                Resource: !GetAtt TelegrafQueue.Arn
-        - PolicyName: SSMParameterAccess-TelegramBotToken
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
                   - ssm:GetParameter
                   - ssm:GetParameters
                   - ssm:GetParametersByPath
                 Resource: [
-                    !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/telegramToken",
-                    !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/telegramChannel"
+                    !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken",
+                    !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
                 ]
 
 
@@ -344,7 +318,7 @@ Resources:
           Id: CreateParameterFunctionTarget_Channel
           Input: !Sub |
             {
-              "parameterName": "/${AWS::StackName}/telegramToken",
+              "parameterName": "/${ApplicationName}/${AWS::StackName}/telegramToken",
               "parameterValue": "${TelegramBotToken}",
               "parameterDescr": "TelegramBotToken for ${ApplicationName}/${AWS::StackName}"
             }
@@ -352,7 +326,7 @@ Resources:
           Id: CreateParameterFunctionTarget_Token
           Input: !Sub |
             {
-              "parameterName": "/${AWS::StackName}/telegramChannel",
+              "parameterName": "/${ApplicationName}/${AWS::StackName}/telegramChannel",
               "parameterValue": "${TelegramChannel}",
               "parameterDescr": "TelegramChannel for ${ApplicationName}/${AWS::StackName}"
             }             
@@ -369,7 +343,7 @@ Resources:
     Type: Custom::Cleanup
     Properties:
       ServiceToken: !GetAtt DeleteParameterFunction.Arn
-      parameterName: !Sub "/${AWS::StackName}/telegramChannel"
+      parameterName: !Sub "/${ApplicationName}/${AWS::StackName}/telegramChannel"
       Policies:
         - PolicyName: StackDeleteHookTelegramChannelPolicy
           PolicyDocument:
@@ -384,7 +358,7 @@ Resources:
     Type: Custom::Cleanup
     Properties:
       ServiceToken: !GetAtt DeleteParameterFunction.Arn
-      parameterName: !Sub "/${AWS::StackName}/telegramToken"
+      parameterName: !Sub "/${ApplicationName}/${AWS::StackName}/telegramToken"
       Policies:
         - PolicyName: StackDeleteHookTelegramTokenPolicy
           PolicyDocument:
@@ -396,8 +370,6 @@ Resources:
                 Resource: !GetAtt DeleteParameterFunction.Arn
 
 Outputs:
-  SqsQueueArn:
-    Value: !GetAtt TelegrafQueue.Arn
-  LambdaFunctionArn:
-    Description: "ARN of the Telegram Bot Lambda function"
+  TelegrafFunctionArn:
+    Description: "ARN of the TelegrafFunction Lambda function"
     Value: !GetAtt TelegrafFunction.Arn

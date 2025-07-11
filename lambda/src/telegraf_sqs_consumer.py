@@ -1,14 +1,13 @@
 import json
 import logging
 import boto3
-import os
+
 
 logger = logging.getLogger()
 
 sqs_client = boto3.client('sqs')
-ssm_client = boto3.client('ssm')
 
-def lambda_handler(event, context):
+def sqs_handler(event, context):
 
     """
     AWS Lambda function to consume and process SQS messages.
@@ -82,22 +81,3 @@ def process_message(message_data):
     logger.info(f"Processing message: {message_data}")
     # Add your processing logic here
 
-def retrieveParameterValue(parameter_arn):
-    """
-    Retrieve a parameter value from AWS Systems Manager Parameter Store.
-
-    Args:
-        parameter_arn: The ARN of the parameter to retrieve
-
-    Returns:
-        str: The parameter value
-    """
-    try:
-        response = ssm_client.get_parameter(
-            Name=parameter_arn,
-            WithDecryption=True
-        )
-        return response['Parameter']['Value']
-    except Exception as e:
-        logger.error(f"Failed to retrieve parameter value: {e}")
-        raise

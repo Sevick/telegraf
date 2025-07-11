@@ -1,11 +1,11 @@
 import unittest
 import json
 from unittest.mock import patch
-from telegraf_sqs_consumer import lambda_handler
+from telegraf_sqs_consumer import sqs_handler
 
 
 class TestSqsConsumer(unittest.TestCase):
-    @patch('telegraf_sqs_consumer.lambda_handler')
+    @patch('telegraf_sqs_consumer.sqs_handler')
     def test_lambda_handler_batch_success(self, mock_sqs_client):
         # Mock SQS client delete_message_batch
         mock_sqs_client.delete_message_batch.return_value = {
@@ -18,7 +18,7 @@ class TestSqsConsumer(unittest.TestCase):
             event = json.load(f)
 
         # Call Lambda handler
-        response = lambda_handler(event, None)
+        response = sqs_handler(event, None)
 
         # Assertions
         self.assertEqual(response['statusCode'], 200)

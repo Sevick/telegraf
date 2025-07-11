@@ -1,0 +1,9 @@
+{
+  "Records": [
+    {
+      "body": "{\"message\": \"test1\"}",
+      "receiptHandle": "test-receipt-handle-1",
+      "eventSourceARN": "arn:aws:sns:us-east-1:286005182102:telegraf-test-topic-5773484857"
+    }
+  ]
+}

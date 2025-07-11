@@ -3,8 +3,12 @@ import logging
 import boto3
 import urllib3
 
-http = urllib3.PoolManager()
 logger = logging.getLogger()
+LOGLEVEL = os.environ.get('LOGLEVEL', 'INFO')
+logger.setLevel(LOGLEVEL)
+
+http = urllib3.PoolManager()
+ssm_client = boto3.client('ssm')
 
 def send_response(event, context, status, reason=None):
     response_body = {
@@ -34,7 +38,7 @@ def create_secure_parameter(event, context):
     parameterDescr = event.get("parameterDescr")
 
     
-    boto3.client('ssm').put_parameter(
+    ssm_client.put_parameter(
         Name=paramName,
         Value=parameterValue,
         Description=parameterDescr,

@@ -21,13 +21,8 @@ def escape_markdown_v2(text):
     return re.sub(special_chars, r"\\\1", text)  # Escape with a preceding backslash
 
 
-def format_telegram_message(input_event, source_link):
-    """
-    Formats the OpenAI JSON response into a fully compliant MarkdownV2 Telegram message.
-    """
-    if not input_event:
-      raise ValueError("Input event is empty")
-
-    # message = f"""*{title}*\n\n{summary_safe}\n\n [{source}]({source_link}) {tag}@IsraelTechNews"""
-    message = "TestMessage"
-    return message
+def format_telegram_message(subject, message):
+    subject = escape_markdown_v2(subject)
+    message = escape_markdown_v2(message)
+    messageText = f"""*{subject}*\n\n{message}"""
+    return messageText
