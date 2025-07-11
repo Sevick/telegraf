@@ -92,7 +92,7 @@ Parameters:
     Default: "telegraf-src-8857ffkjd48fkn"
 
 Conditions:
-  SourceSNSTopicSubscribeRoleHasValue: !Not [ !Equals [ !Ref SourceSNSTopicSubscribeRole, "" ] ]
+  SourceSNSTopicSubscribeRoleHasNoValue: !Equals [ !Ref SourceSNSTopicSubscribeRole, "" ]
 
 Resources:
   TelegrafFunction:
@@ -230,7 +230,7 @@ Resources:
 
   TelegrafAppSNSTopicSubscribeRole:
     Type: AWS::IAM::Role
-    Condition: SourceSNSTopicSubscribeRoleHasValue
+    Condition: SourceSNSTopicSubscribeRoleHasNoValue
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
