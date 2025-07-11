@@ -17,23 +17,23 @@ logger.setLevel(LOGLEVEL)
 # Telegram API base URL
 TELEGRAM_API_URL = f"https://api.telegram.org/bot"
 
-
-TELEGRAMBOTTOKEN_PARAMETER_ARN = os.environ.get('TELEGRAMBOTTOKEN_PARAMETER_ARN')
-if not TELEGRAMBOTTOKEN_PARAMETER_ARN:
-    logger.error("TELEGRAMBOTTOKEN_PARAMETER_ARN environment variable is not set")
-    raise ValueError("TELEGRAMBOTTOKEN_PARAMETER_ARN environment variable is not set")
-
-TELEGRAMCHANNEL_PARAMETER_ARN = os.environ.get('TELEGRAMCHANNEL_PARAMETER_ARN')
-if not TELEGRAMCHANNEL_PARAMETER_ARN:
-    logger.error("TELEGRAMCHANNEL_PARAMETER_ARN environment variable is not set")
-    raise ValueError("TELEGRAMCHANNEL_PARAMETER_ARN environment variable is not set")
-
-
 class Sender:
     def __init__(self):
+        self.TELEGRAMBOTTOKEN_PARAMETER_ARN = os.environ.get('TELEGRAMBOTTOKEN_PARAMETER_ARN')
+        if not self.TELEGRAMBOTTOKEN_PARAMETER_ARN:
+            logger.error("TELEGRAMBOTTOKEN_PARAMETER_ARN environment variable is not set")
+            raise ValueError("TELEGRAMBOTTOKEN_PARAMETER_ARN environment variable is not set")
+
+        self.TELEGRAMCHANNEL_PARAMETER_ARN = os.environ.get('TELEGRAMCHANNEL_PARAMETER_ARN')
+        if not self.TELEGRAMCHANNEL_PARAMETER_ARN:
+            logger.error("TELEGRAMCHANNEL_PARAMETER_ARN environment variable is not set")
+            raise ValueError("TELEGRAMCHANNEL_PARAMETER_ARN environment variable is not set")
+
         self.paramter_store = ParameterStore()
-        self.chat_id = self.paramter_store.retrieveParameterValue(TELEGRAMCHANNEL_PARAMETER_ARN)
-        self.bot = self.paramter_store.retrieveParameterValue(TELEGRAMBOTTOKEN_PARAMETER_ARN)
+        self.chat_id = self.paramter_store.retrieveParameterValue(self.TELEGRAMCHANNEL_PARAMETER_ARN)
+        self.bot = self.paramter_store.retrieveParameterValue(self.TELEGRAMBOTTOKEN_PARAMETER_ARN)
+
+
 
     def send_payload(self, payload):
         datajson = json.dumps(payload).encode('utf-8')

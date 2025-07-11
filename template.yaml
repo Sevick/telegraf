@@ -103,7 +103,7 @@ Resources:
         - ResourceName: TelegrafFunction
       Code:
         S3Bucket: !Ref S3BucketName
-        S3Key: b86676f1282ef03f237ed770b897ab7b
+        S3Key: 96a2072b2762b8c6a16fc08dafc80ad5
       Handler: lambda_handler.lambda_handler
       Runtime: python3.12
       MemorySize: 128
@@ -113,8 +113,8 @@ Resources:
       Environment:
         Variables:
           LOGLEVEL: !Ref LogLevel
-          TELEGRAM_BOT_TOKEN_PARAM_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken"
-          TELEGRAM_CHANNEL_PARAM_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
+          TELEGRAMBOTTOKEN_PARAMETER_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken"
+          TELEGRAMCHANNEL_PARAMETER_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
       LoggingConfig:
         LogGroup: !Ref TelegrafLogGroup
         LogFormat: !Ref LogFormat
@@ -158,6 +158,8 @@ Resources:
       Environment:
         Variables:
           LOGLEVEL: INFO
+          TELEGRAMBOTTOKEN_PARAMETER_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken"
+          TELEGRAMCHANNEL_PARAMETER_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
       LoggingConfig:
         LogGroup: !Ref TelegrafLogGroup
         LogFormat: !Ref LogFormat
