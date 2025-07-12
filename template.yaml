@@ -70,6 +70,13 @@ Parameters:
       - Text
       - Json
 
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 10
+    Tags:
+      awsApplication: !Sub "${ApplicationName}-${AWS::StackName}"
+
 Resources:
   TelegrafFunction:
     Type: AWS::Serverless::Function
