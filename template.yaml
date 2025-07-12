@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-# create admin role to manage all related resources
 Metadata:
   ParameterGroups:
     - Label:
@@ -8,13 +7,7 @@ Metadata:
       Parameters:
         - ApplicationName
         - SourceSNSTopic
-        - SourceSNSTopicSubscribeRole
         - LogsRetentionInDays
-
-    - Label:
-        default: "SNS configuration"
-      Parameters:
-        - SNSBatchSize
 
     - Label:
         default: "Telegram bot configuration"
@@ -23,18 +16,12 @@ Metadata:
         - TelegramChannel
         - TelegramSendTimeout
 
-
   AWS::CloudFormation::Interface:
     ParameterLabels:
       SourceSNSTopic:
         default: "Source SNS topic ARN to subscribe to"
-      SourceSNSTopicSubscribeRole:
-        default: "Existing role to access SNS topic"
-      SNSBatchSize:
-        default: "SNS batch size. Batching is supported by SNS-FIFO only."
       LogsRetentionInDays:
         default: "Logs retention in days"
-
 
 Parameters:
   ApplicationName:
@@ -48,19 +35,8 @@ Parameters:
 
   SourceSNSTopic:
     Type: String
-    Default: "arn:aws:sns:us-east-1:286005182102:telegraf-test-topic-5773484857"
-    Description: "arn:aws:sns:<Region>:<AccountID>:<SNS topic>.fifo"
-
-  SourceSNSTopicSubscribeRole:
-    Type: String
     Default: ""
-    Description: "Exiting role to access SNS topic (should grant SNS:Subscribe). If empty  - new role will be created"
-
-  SNSBatchSize:
-    Type: Number
-    Description: "Number of messages to be pulled from SNS"
-    Default: 10
-
+    Description: "arn:aws:sns:<Region>:<AccountID>:<SNS topic>[.fifo]"
 
   TelegramBotToken:
     Type: String
@@ -80,17 +56,19 @@ Parameters:
   LogLevel:
     Type: String
     Default: "DEBUG"
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+      - CRITICAL
   LogFormat:
     Type: String
     Description: "Text/Json"
     Default: "Text"
-  S3BucketName:
-    Type: String
-    Description: "S3Bucket containing lamdas source code"
-    Default: "telegraf-src-8857ffkjd48fkn"
-
-Conditions:
-  SourceSNSTopicSubscribeRoleHasNoValue: !Equals [ !Ref SourceSNSTopicSubscribeRole, "" ]
+    AllowedValues:
+      - Text
+      - Json
 
 Resources:
   TelegrafFunction:
@@ -219,28 +197,6 @@ Resources:
       LogGroupName: !Sub "${ApplicationName}/${AWS::StackName}"
       RetentionInDays: !Ref LogsRetentionInDays
 
-  TelegrafAppSNSTopicSubscribeRole:
-    Type: AWS::IAM::Role
-    Condition: SourceSNSTopicSubscribeRoleHasNoValue
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: SNSTopicSubscribePolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - SNS:Subscribe
-                Resource: !Ref SourceSNSTopic
-
-
   TelegrafApplication:
     Type: AWS::ServiceCatalogAppRegistry::Application
     Properties:
@@ -301,35 +257,29 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt StackCompletionEventRule.Arn
 
-  StackDeleteHookTelegramChannel:
+  StackDeleteHookParameterTelegramChannel:
     Type: Custom::Cleanup
     Properties:
       ServiceToken: !GetAtt DeleteParameterFunction.Arn
       parameterName: !Sub "/${ApplicationName}/${AWS::StackName}/telegramChannel"
       Policies:
-        - PolicyName: StackDeleteHookTelegramChannelPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource: !GetAtt DeleteParameterFunction.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt DeleteParameterFunction.Arn
 
-  StackDeleteHookTelegramToken:
+  StackDeleteHookParameterTelegramToken:
     Type: Custom::Cleanup
     Properties:
       ServiceToken: !GetAtt DeleteParameterFunction.Arn
       parameterName: !Sub "/${ApplicationName}/${AWS::StackName}/telegramToken"
       Policies:
-        - PolicyName: StackDeleteHookTelegramTokenPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource: !GetAtt DeleteParameterFunction.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt DeleteParameterFunction.Arn
 
 Outputs:
   TelegrafFunctionArn:
