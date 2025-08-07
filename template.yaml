@@ -1,0 +1,325 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Metadata:
+  ParameterGroups:
+    - Label:
+        default: "General settings"
+      Parameters:
+        - ApplicationName
+        - SourceSNSTopic
+        - LogsRetentionInDays
+    - Label:
+        default: "Telegram bot configuration"
+      Parameters:
+        - TelegramBotToken
+        - TelegramChannel
+        - TelegramSendTimeout
+    - Label:
+        default: "Network (VPC) Configuration - optional. You need to specify proper SecurityGroup and Subnets for the VPC and make sure they have access to AWS SSM and egress access to Internet"
+      Parameters:
+        - VpcId
+        - SubnetIds
+        - SecurityGroupIds
+  AWS::CloudFormation::Interface:
+    ParameterLabels:
+      VpcId:
+        default: "VPC ID (Optional)"
+      SubnetIds:
+        default: "Subnet IDs (only if you specified VPC). Subnets should have an access to AWS SSM"
+      SecurityGroupIds:
+        default: "Security Group IDs (Optional)"
+      SourceSNSTopic:
+        default: "Source SNS topic ARN to subscribe to"
+      LogsRetentionInDays:
+        default: "Logs retention in days"
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: "Telegraf"
+
+  VpcId:
+    Type: String
+    Default: ""
+    Description: "VPC ID for the Lambda functions"
+  SubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: "Comma-separated list of Subnet IDs for the Lambda functions"
+  SecurityGroupIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: "Comma-separated list of Security Group IDs for the Lambda functions. Optional, leave blank to create a default Security Group (if VPC is specified)"
+
+  SourceSNSTopic:
+    Type: String
+    Default: ""
+    Description: "arn:aws:sns:<Region>:<AccountID>:<SNS topic>[.fifo]"
+
+  LogsRetentionInDays:
+    Type: Number
+    Default: 3
+    Description: "Logs retention in days"
+
+  TelegramBotToken:
+    Type: String
+    NoEcho: true
+    Description: "The token to be used to send notifications"
+    Default: "XXXXXX:YYXXYY"
+  TelegramChannel:
+    Type: String
+    NoEcho: true
+    Description: "Group or channel ID to send notifications"
+    Default: "-100XXXXX"
+  TelegramSendTimeout:
+    Type: Number
+    Default: 30
+    Description: "Seconds to wait for Telegram send message to complete"
+
+  LogLevel:
+    Type: String
+    Default: "DEBUG"
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+      - CRITICAL
+  LogFormat:
+    Type: String
+    Description: "Text/JSON"
+    Default: "JSON"
+    AllowedValues:
+      - Text
+      - JSON
+
+
+
+Conditions:
+  UseVPCConfig:
+    !And
+      - !Not [!Equals [!Ref VpcId, ""]]
+      - !Not [!Equals [!Join [",", !Ref SubnetIds], ""]]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - arm64
+    Layers:
+      - !Sub 'arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPython:19'
+    Tags:
+      awsApplication: !Sub "${ApplicationName}-${AWS::StackName}"
+    VpcConfig: !If
+      - UseVPCConfig
+      - SubnetIds: !Ref SubnetIds
+        SecurityGroupIds: !Ref SecurityGroupIds
+      - !Ref AWS::NoValue
+    Environment:
+      Variables:
+        POWERTOOLS_LOG_LEVEL: !Ref LogLevel
+        POWERTOOLS_SERVICE_NAME: !Sub "${AWS::StackName}"
+        POWERTOOLS_METRICS_NAMESPACE: !Sub "${ApplicationName}/${AWS::StackName}"
+        PARAMETERS_SECRETS_EXTENSION_LOG_LEVEL: !Ref LogLevel
+
+
+Resources:
+  TelegrafFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: TelegrafFunction
+      CodeUri: lambda_telegraf/src/
+      Handler: lambda_handler.lambda_handler
+      MemorySize: 128
+      Timeout: !Ref TelegramSendTimeout
+      Environment:
+        Variables:
+          TELEGRAMBOTTOKEN_PARAMETER_NAME: !Sub "/${ApplicationName}/${AWS::StackName}/telegramToken"
+          TELEGRAMCHANNEL_PARAMETER_NAME: !Sub "/${ApplicationName}/${AWS::StackName}/telegramChannel"
+      LoggingConfig:
+        LogGroup: !Ref TelegrafLogGroup
+        LogFormat: !Ref LogFormat
+      Layers:
+        - !Sub 'arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension-Arm64:11'
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !GetAtt TelegrafLogGroup.Arn
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: [
+                !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken",
+                !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
+              ]
+
+
+  TelegrafSNSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: lambda
+      TopicArn: !Ref SourceSNSTopic
+      Endpoint: !GetAtt TelegrafFunction.Arn
+
+  LambdaInvokePermissionForSNS:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TelegrafFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref SourceSNSTopic
+
+
+  CreateParameterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: CreateParameterFunction
+      CodeUri: lambda_parameter_api/src/
+      Handler: parameter_api.create_secure_parameter
+      MemorySize: 128
+      Timeout: 60
+      Environment:
+        Variables:
+          TELEGRAMBOTTOKEN_PARAMETER_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramToken"
+          TELEGRAMCHANNEL_PARAMETER_ARN: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/telegramChannel"
+      LoggingConfig:
+        LogGroup: !Ref TelegrafLogGroup
+        LogFormat: !Ref LogFormat
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !GetAtt TelegrafLogGroup.Arn
+          - Effect: Allow
+            Action:
+              - ssm:PutParameter
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/*"
+
+
+  DeleteParameterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: DeleteParameterFunction
+      CodeUri: lambda_parameter_api/src/
+      Handler: parameter_api.delete_secure_parameter
+      MemorySize: 128
+      Timeout: 60
+      LoggingConfig:
+        LogGroup: !Ref TelegrafLogGroup
+        LogFormat: !Ref LogFormat
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !GetAtt TelegrafLogGroup.Arn
+          - Effect: Allow
+            Action:
+              - ssm:DeleteParameter
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${AWS::StackName}/*"
+
+  TelegrafLogGroup:
+    Type: AWS::Logs::LogGroup
+    #DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub "${ApplicationName}/${AWS::StackName}"
+      RetentionInDays: !Ref LogsRetentionInDays
+
+  TelegrafApplication:
+    Type: AWS::ServiceCatalogAppRegistry::Application
+    Properties:
+      Name: !Sub "${ApplicationName}-${AWS::StackName}"
+      Description: "SNS to Telegram"
+
+  AppAssociation:
+    Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+    Properties:
+      Application: !Ref TelegrafApplication
+      Resource: !Ref AWS::StackId
+      ResourceType: CFN_STACK
+
+
+  StackCompletionEventRule:
+    Type: AWS::Events::Rule
+    DependsOn:
+      - CreateParameterFunction
+      - TelegrafLogGroup
+    Properties:
+      EventPattern:
+        source:
+          - aws.cloudformation
+        detail-type:
+          - CloudFormation Stack Status Change
+        detail:
+          stack-id:
+            - !Ref AWS::StackId
+          status-details:
+            status:
+              - CREATE_COMPLETE
+              - UPDATE_COMPLETE
+      Targets:
+        - Arn: !GetAtt CreateParameterFunction.Arn
+          Id: CreateParameterFunctionTarget_Channel
+          Input: !Sub |
+            {
+              "parameterName": "/${ApplicationName}/${AWS::StackName}/telegramToken",
+              "parameterValue": "${TelegramBotToken}",
+              "parameterDescr": "TelegramBotToken for ${ApplicationName}/${AWS::StackName}"
+            }
+        - Arn: !GetAtt CreateParameterFunction.Arn
+          Id: CreateParameterFunctionTarget_Token
+          Input: !Sub |
+            {
+              "parameterName": "/${ApplicationName}/${AWS::StackName}/telegramChannel",
+              "parameterValue": "${TelegramChannel}",
+              "parameterDescr": "TelegramChannel for ${ApplicationName}/${AWS::StackName}"
+            }             
+
+  EventBridgeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CreateParameterFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StackCompletionEventRule.Arn
+
+  StackDeleteHookParameterTelegramChannel:
+    Type: Custom::Cleanup
+    Properties:
+      ServiceToken: !GetAtt DeleteParameterFunction.Arn
+      parameterName: !Sub "/${ApplicationName}/${AWS::StackName}/telegramChannel"
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt DeleteParameterFunction.Arn
+
+  StackDeleteHookParameterTelegramToken:
+    Type: Custom::Cleanup
+    Properties:
+      ServiceToken: !GetAtt DeleteParameterFunction.Arn
+      parameterName: !Sub "/${ApplicationName}/${AWS::StackName}/telegramToken"
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt DeleteParameterFunction.Arn
+
+Outputs:
+  TelegrafFunctionArn:
+    Description: "ARN of the TelegrafFunction Lambda function"
+    Value: !GetAtt TelegrafFunction.Arn
