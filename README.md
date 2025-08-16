@@ -2,6 +2,36 @@
 
 AWS Lambda function that sends SNS messages to Telegram group/channel.
 
+You need to specify just 3 mandatory parameters to install the stack:
+
+- SourceSNSTopic - ARN of the AWS SNS topic whose messages you want to send to Telegram
+- TelegramChannel - ID of the telegram group or channel
+- TelegramBotToken -  token for the bot (bot should be a member of the defined channel/group and have permissions to post messages)
+
+(SourceSNSTopic=;TelegramChannel=;TelegramBotToken=)
+JSON to use with CodeDeploy pipeline : {"SourceSNSTopic": "", "TelegramBotToken": "", "TelegramChannel": ""}
+
+And number of optional parameters that allows you to configure logging, place all lambdas into VPC etc. - check the template's parameters section (or deploy from S3).
+
+### Installation:
+
+- Package
+    ```bash
+    sam package \
+   --template-file template.yaml \
+   --s3-bucket my-artifacts-bucket \
+   --output-template-file telegraf-packaged.yaml
+    ```
+- Deploy
+    ```bash
+    aws cloudformation deploy 
+   --template-file telegraf-packaged.yaml 
+   --stack-name my-stack-name 
+   --capabilities CAPABILITY_IAM
+  ```
+  
+
+
 - ## Functions
 
 ### TelegrafFunction
