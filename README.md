@@ -9,9 +9,10 @@ You need to specify just 3 mandatory parameters to install the stack:
 - TelegramBotToken -  token for the bot (bot should be a member of the defined channel/group and have permissions to post messages)
 
 (SourceSNSTopic=;TelegramChannel=;TelegramBotToken=)
+
 JSON to use with CodeDeploy pipeline : {"SourceSNSTopic": "", "TelegramBotToken": "", "TelegramChannel": ""}
 
-And number of optional parameters that allows you to configure logging, place all lambdas into VPC etc. - check the template's parameters section (or deploy from S3).
+And number of optional parameters that allows you to configure logging, place all lambdas into VPC etc. - check the [template](template.yaml)'s parameters section (or [deploy from S3 for UI](https://console.aws.amazon.com/cloudformation/home?/stacks/create)).
 
 ### Installation:
 
