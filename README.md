@@ -25,9 +25,9 @@ And number of optional parameters that allows you to configure logging, place al
     ```
 - Deploy
     ```bash
-    aws cloudformation deploy 
-   --template-file telegraf-packaged.yaml 
-   --stack-name my-stack-name 
+    aws cloudformation deploy \
+   --template-file telegraf-packaged.yaml \ 
+   --stack-name my-stack-name \
    --capabilities CAPABILITY_IAM
   ```
   
